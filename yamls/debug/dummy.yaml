@@ -1,0 +1,47 @@
+master_factory_base_path: kseg
+template_path: yaml_templates
+name: benchmark-s16-upernet-sd01
+stage_name: ade20k
+
+max_num_workers: 0
+vars:
+  optim:
+    kind: adamw
+    lr: 1.0e-4
+
+datasets:
+  train:
+    kind: dummy_dataset
+
+model:
+  kind: composite.vit_upernet
+  encoder:
+    kind: encoders.vit
+    patch_size: 16
+    kwargs: ${select:small:${yaml:models/vit}}
+    use_last_norm: false
+    optim: ${vars.optim}
+  postprocessor:
+    kind: postprocessors.vit_postprocessor
+    optim: ${vars.optim}
+  auxiliary:
+    kind: heads.upernet_auxiliary
+    dim: 192
+    feature_index: 2
+    optim: ${vars.optim}
+  decoder:
+    kind: heads.upernet_decoder
+    pool_scales: [ 1, 2, 3, 6 ]
+    optim: ${vars.optim}
+
+trainer:
+  kind: segmentation_trainer
+  precision: float32
+  effective_batch_size: 8
+  max_updates: 1000
+  ignore_index: -1
+  main_sampler:
+    shuffle: false
+  loss_weights:
+    auxiliary: 0.4
+  log_every_n_epochs: 1

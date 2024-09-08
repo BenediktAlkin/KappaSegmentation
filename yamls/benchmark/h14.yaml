@@ -1,0 +1,86 @@
+master_factory_base_path: kseg
+template_path: yaml_templates
+name: benchmark-h14-upernet-sd02
+stage_name: ade20k
+
+
+vars:
+  batch_size: 8
+  optim:
+    kind: adamw
+    lr: 1.0e-4
+
+
+datasets:
+  train:
+    kind: datasets.ade20k
+    split: training
+    sample_wrappers:
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_random_resize
+            ratio_resolution: [ 2048, 518 ]
+            ratio_range: [ 0.5, 2.0 ]
+            interpolation: bicubic
+          - kind: segmentation_random_crop
+            size: 518
+            max_category_ratio: 0.75
+            ignore_index: -1
+          - kind: segmentation_random_horizontal_flip
+      - kind: x_transform_wrapper
+        transform:
+          - kind: color_jitter
+            brightness: 0.5
+            contrast: 0.5
+            saturation: 0.5
+            hue: 0.25
+          - kind: imagenet1k_norm
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_pad
+            size: 518
+            fill: -1
+
+model:
+  kind: models.composite.vit_upernet
+  encoder:
+    kind: models.backbones.vit
+    patch_size: 14
+    kwargs: ${select:huge:${yaml:models/vit}}
+    drop_path_rate: 0.2
+    drop_path_decay: true
+    layerscale: 1.0
+    optim: ${vars.optim}
+  postprocessor:
+    kind: models.postprocessors.vit_postprocessor
+    optim: ${vars.optim}
+  auxiliary:
+    kind: models.heads.upernet_auxiliary
+    dim: 256
+    dropout: 0.1
+    feature_index: 2
+    optim: ${vars.optim}
+  decoder:
+    kind: models.heads.upernet_decoder
+    pool_scales: [ 1, 2, 3, 6 ]
+    dropout: 0.1
+    optim: ${vars.optim}
+
+
+trainer:
+  kind: segmentation_trainer
+  precision: bfloat16
+  backup_precision: float32
+  effective_batch_size: ${vars.batch_size}
+  max_updates: 150
+  ignore_index: -1
+  loss_weights:
+    auxiliary: 0.4
+  log_every_n_epochs: 1
+  add_default_callbacks: false
+  add_trainer_callbacks: false
+  callbacks:
+    - kind: progress_callback
+      every_n_updates: 50
+    - kind: train_time_callback
+      every_n_updates: 50

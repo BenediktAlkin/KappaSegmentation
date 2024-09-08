@@ -1,0 +1,82 @@
+master_factory_base_path: kseg
+template_path: yaml_templates
+name: dinov2-s14linear--eval
+stage_name: ade20k
+
+
+vars:
+  stage_id: tdvkiqti
+  checkpoint: latest
+
+
+datasets:
+  train:
+    kind: datasets.ade20k
+    split: training
+    sample_wrappers:
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_random_resize
+            ratio_resolution: [ 2048, 518 ]
+            ratio_range: [ 0.5, 2.0 ]
+            interpolation: bicubic
+          - kind: segmentation_random_crop
+            size: 518
+            max_category_ratio: 0.75
+            ignore_index: -1
+          - kind: segmentation_random_horizontal_flip
+      - kind: x_transform_wrapper
+        transform:
+          - kind: color_jitter
+            brightness: 0.5
+            contrast: 0.5
+            saturation: 0.5
+            hue: 0.25
+          - kind: imagenet1k_norm
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_pad
+            size: 518
+            fill: -1
+  val:
+    kind: datasets.ade20k
+    split: validation
+    sample_wrappers:
+      - kind: x_transform_wrapper
+        transform:
+          - kind: imagenet1k_norm
+
+model:
+  kind: models.pretrained.dinov2_segmenter
+  model: dinov2_vits14
+  is_frozen: true
+
+trainer:
+  kind: segmentation_trainer
+  precision: bfloat16
+  backup_precision: float16
+  effective_batch_size: 1
+  max_epochs: 0
+  ignore_index: -1
+  loss_weights:
+    auxiliary: 0.4
+  log_every_n_epochs: 1
+  callbacks:
+    # miou
+    - kind: offline_segmentation_callback
+      every_n_epochs: 1
+      batch_size: 1
+      dataset_key: val
+      ignore_index: -1
+      mode: slide
+      mode_kwargs:
+        stride: [ 341, 341 ]
+    # visualize
+#    - kind: visualize_segmentation_callback
+#      every_n_epochs: 1
+#      batch_size: 1
+#      dataset_key: val
+#      mode: slide
+#      mode_kwargs:
+#        stride: [ 341, 341 ]
+#      save_input: true

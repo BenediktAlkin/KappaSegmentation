@@ -1,0 +1,100 @@
+master_factory_base_path: kseg
+template_path: yaml_templates
+name: t16res224-u10k-linear-aug
+stage_name: ade20k
+
+
+vars:
+  batch_size: 16
+  updates: 10000
+  optim:
+    kind: adamw
+    lr: 1.0e-4
+    betas: [ 0.9, 0.999 ]
+    weight_decay: 0.05
+    schedule:
+      kind: linear_warmup_cosine_decay_schedule
+      warmup_updates: 1500
+      end_value: 1.0e-6
+    lr_scaler:
+      kind: linear_lr_scaler
+      divisor: 16
+
+
+datasets:
+  train:
+    kind: datasets.ade20k
+    split: training
+    sample_wrappers:
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_random_resize
+            ratio_resolution: [ 1024, 224 ]
+            ratio_range: [ 0.5, 2.0 ]
+            interpolation: bicubic
+          - kind: segmentation_random_crop
+            size: 224
+            max_category_ratio: 0.75
+            ignore_index: -1
+          - kind: segmentation_random_horizontal_flip
+      - kind: x_transform_wrapper
+        transform:
+          - kind: color_jitter
+            brightness: 0.5
+            contrast: 0.5
+            saturation: 0.5
+            hue: 0.25
+          - kind: imagenet1k_norm
+      - kind: segmentation_transform_wrapper
+        transform:
+          - kind: segmentation_pad
+            size: 224
+            fill: -1
+  val:
+    kind: datasets.ade20k
+    split: validation
+    sample_wrappers:
+      - kind: x_transform_wrapper
+        transform:
+          - kind: imagenet1k_norm
+
+model:
+  kind: models.composite.encoder_decoder
+  encoder:
+    kind: models.encoders.vit
+    patch_size: 16
+    kwargs: ${select:tiny:${yaml:models/vit}}
+    drop_path_rate: 0.0
+    drop_path_decay: true
+    optim: ${vars.optim}
+  decoder:
+    kind: models.heads.linear_decoder
+    pooling:
+      kind: to_image
+      concat_cls: false
+    optim: ${vars.optim}
+
+trainer:
+  kind: segmentation_trainer
+  precision: bfloat16
+  backup_precision: float32
+  effective_batch_size: ${vars.batch_size}
+  max_updates: ${vars.updates}
+  ignore_index: -1
+  log_every_n_updates: 1000
+  callbacks:
+    # resume
+    - kind: checkpoint_callback
+      every_n_updates: 1000
+      save_weights: false
+      save_latest_weights: true
+      save_latest_optim: true
+    # miou
+    - kind: offline_segmentation_callback
+      every_n_updates: 1000
+      batch_size: 1
+      dataset_key: val
+      ignore_index: -1
+      mode: slide
+      mode_kwargs:
+        stride: [ 150, 150 ]
