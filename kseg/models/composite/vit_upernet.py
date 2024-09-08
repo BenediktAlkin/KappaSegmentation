@@ -1,12 +1,8 @@
-import einops
-import einops
-import torch
-
-from examples.msmim.extractors import VitBlockExtractor
+from kseg.extractors import VitBlockExtractor
 from ksuit.factory import MasterFactory
 from ksuit.models import CompositeModel
-from ksuit.models.extractors.finalizers import StackFinalizer
 from ksuit.models.poolings import ToImage
+
 
 class VitUpernet(CompositeModel):
     def __init__(
